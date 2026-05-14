@@ -1,0 +1,25 @@
+{
+    "name": "crystal-loader",
+    "command_name": "crystal",
+    "version": "0.1.0",
+    "extension_author": "Simone Licitra",
+    "original_author": "rasta-mouse, nickswink, TrustedSec (BOF compat)",
+    "repo_url": "https://github.com/licitrasimone/crystal-kit-sliver",
+    "help": "Run a Crystal Palace PICO-wrapped post-ex DLL inside a Sliver implant",
+    "entrypoint": "go",
+    "files": [
+        {
+            "os": "windows",
+            "arch": "amd64",
+            "path": "crystal-loader.x64.dll"
+        }
+    ],
+    "arguments": [
+        {
+            "name": "payload",
+            "desc": "Path on operator host to a Crystal Palace PICO .bin produced by generate.sh — Sliver client reads it and forwards bytes to the implant",
+            "type": "file",
+            "optional": false
+        }
+    ]
+}

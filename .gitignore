@@ -1,0 +1,33 @@
+# Reference clones (upstream repos pulled locally for analysis only)
+references/
+
+# External downloaded tooling (Crystal Palace dist, etc.) — not redistributable
+external/
+
+# Sliver operator configs (contain credentials)
+*.cfg
+
+# Build artifacts
+*.o
+*.obj
+*.bin
+*.dll
+*.exe
+bin/
+build/
+
+# Archives / dist downloads
+*.tgz
+*.tar.gz
+*.zip
+
+# Crystal Palace prerequisite (proprietary tooling, do NOT commit)
+*.jar
+libtcg.x64.zip
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
