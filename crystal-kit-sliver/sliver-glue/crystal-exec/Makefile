@@ -30,10 +30,7 @@ crystalexec.pico.bin: crystalexec.dll
 
 # ── Step 3: embed PICO as C array ─────────────────────────────────────────────
 crystalexec_pico.h: crystalexec.pico.bin
-	xxd -i $< | \
-	  sed 's/unsigned char [a-z_A-Z0-9]*/unsigned char crystalexec_pico/; \
-	       s/unsigned int [a-z_A-Z0-9]*/unsigned int crystalexec_pico_len/' \
-	  > $@
+	xxd -i $< | sed 's/unsigned char [a-zA-Z0-9_]*/unsigned char crystalexec_pico/;s/unsigned int [a-zA-Z0-9_]*/unsigned int crystalexec_pico_len/' > $@
 
 # ── Step 4 + 5: extension DLL with embedded PICO ──────────────────────────────
 ../crystal-exec.x64.dll: crystal-exec.c crystalexec_pico.h
