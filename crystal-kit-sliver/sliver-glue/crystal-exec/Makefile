@@ -11,8 +11,8 @@
 #   CRYSTAL_PALACE_HOME set in environment or ../. crystalenv
 
 CC     := x86_64-w64-mingw32-gcc
-CFLAGS := -Wall -Os -DBUILD_DLL
-LFLAGS := -shared -Wl,--subsystem,windows
+CFLAGS := -Wall -Os -DBUILD_DLL -ffunction-sections -fdata-sections
+LFLAGS := -shared -Wl,--subsystem,windows -s -Wl,--gc-sections
 
 SCRIPT_DIR := $(shell cd .. && pwd)
 
@@ -28,9 +28,9 @@ crystalexec.dll: crystalexec.c
 crystalexec.pico.bin: crystalexec.dll
 	$(SCRIPT_DIR)/generate.sh $< "" $@
 
-# ── Step 3: embed PICO as C array ─────────────────────────────────────────────
-crystalexec_pico.h: crystalexec.pico.bin
-	xxd -i $< | sed 's/unsigned char [a-zA-Z0-9_]*/unsigned char crystalexec_pico/;s/unsigned int [a-zA-Z0-9_]*/unsigned int crystalexec_pico_len/' > $@
+# ── Step 3: XOR-encrypt PICO → C header (fresh random key every build) ────────
+crystalexec_pico.h: crystalexec.pico.bin gen_pico_header.py
+	python3 gen_pico_header.py $< $@
 
 # ── Step 4 + 5: extension DLL with embedded PICO ──────────────────────────────
 ../crystal-exec.x64.dll: crystal-exec.c crystalexec_pico.h
