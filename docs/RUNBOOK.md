@@ -104,13 +104,19 @@ Goal: prove that the `crystal-loader.x64.dll` Sliver Extension loads inside the 
 cd crystal-kit-sliver/sliver-glue
 make -C wrapper all
 make -C wrapper smoketest
+make -C crystal-exec all
 ./pack-extension.sh
 ls -la build/
 ```
 
-Expected files:
+`pack-extension.sh` requires **both** DLLs to exist before it runs:
+- `crystal-loader.x64.dll` — provides the `crystal` command
+- `crystal-exec.x64.dll` — provides the `crystal-exec` command
 
-- `crystal-loader.x64.dll` (~114 KB, in `sliver-glue/` parent)
+Expected files after the above:
+
+- `crystal-loader.x64.dll` (~232 KB, in `sliver-glue/` parent)
+- `crystal-exec.x64.dll` (~328 KB, in `sliver-glue/` parent)
 - `build/smoketest.bin` (3 bytes: `31 c0 c3` = `xor eax,eax; ret`)
 - `build/crystal-loader-0.1.0.tar.gz` (~37 KB)
 
@@ -445,6 +451,7 @@ make -C crystal-kit-sliver/loader all
 make -C crystal-kit-sliver/postex-loader all
 make -C crystal-kit-sliver/sliver-glue/wrapper all
 make -C crystal-kit-sliver/sliver-glue/wrapper smoketest
+make -C crystal-kit-sliver/sliver-glue/crystal-exec all
 
 echo "" > /tmp/empty.args
 ./crystal-kit-sliver/sliver-glue/generate.sh \

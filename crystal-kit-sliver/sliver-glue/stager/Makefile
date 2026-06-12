@@ -5,7 +5,7 @@
 #   make PICO=/path/to/implant.crystal.bin OUTPUT=/path/to/stager.exe
 #
 # Outputs:
-#   <OUTPUT>              stager EXE (~60 KB, no embedded payload)
+#   <OUTPUT>              stager EXE (~17 KB, no embedded payload)
 #   $(dir <OUTPUT>)/payload.dat   AES-256-CBC encrypted PICO
 
 CC      := x86_64-w64-mingw32-gcc

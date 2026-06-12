@@ -95,7 +95,7 @@ LDFLAGS := -shared -Wl,--subsystem,windows
 $(CC_64) $(CFLAGS) crystal-loader.c beacon_compatibility.c -o ../crystal-loader.x64.dll $(LDFLAGS)
 ```
 
-**Verified output:** 114051 bytes, PE32+ x86-64, exports symbol `go`.
+**Verified output:** ~232 KB, PE32+ x86-64, exports symbol `go`.
 
 A smoke test shellcode (`smoketest.asm`) builds in parallel:
 
@@ -135,7 +135,7 @@ Key design constraints:
 - `crystal-exec.c` (the Sliver extension itself) may use CRT normally — it runs in the normal process context, not inside the PICO loader
 - Single callback model: all output accumulates into a heap buffer; exactly ONE `callback(buf, len)` call at the very end. Sliver extension loaders only display the first callback invocation — any subsequent calls are silently dropped.
 
-**Verified output:** `crystal-exec.x64.dll` — PE32+ x86-64, exports symbol `go`.
+**Verified output:** `crystal-exec.x64.dll` — ~328 KB, PE32+ x86-64, exports symbol `go`.
 
 ### 3e. Custom stager — two-file delivery (Use case A Defender bypass)
 

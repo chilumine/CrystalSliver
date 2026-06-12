@@ -121,6 +121,7 @@ make -C crystal-kit-sliver/loader all
 make -C crystal-kit-sliver/postex-loader all
 make -C crystal-kit-sliver/sliver-glue/wrapper all
 make -C crystal-kit-sliver/sliver-glue/wrapper smoketest
+make -C crystal-kit-sliver/sliver-glue/crystal-exec all
 
 # 4. Use case A — wrap a Sliver implant and build the stager
 ./crystal-kit-sliver/sliver-glue/generate-implant.sh --dll /path/to/sliver-impl.dll \
@@ -153,7 +154,7 @@ See `docs/RUNBOOK.md` for the full operator procedure (Sliver install, listener 
 | Crystal Palace CLI verified | OK | `./link <spec> <dll> <out.bin> [%KEY=value]` — positional, documented in `dist/README` |
 | End-to-end PICO build (Use case A) | OK | 117 KB PICO produced from test DLL |
 | End-to-end PICO build (Use case B) | OK | 111 KB PICO produced via `postex-loader/loader.spec` |
-| Sliver Extension wrapper DLL builds | OK | 114 KB PE32+ exporting `go` symbol |
+| Sliver Extension wrapper DLL builds | OK | `crystal-loader.x64.dll` ~232 KB, `crystal-exec.x64.dll` ~328 KB — both PE32+ exporting `go` symbol |
 | Extension tarball packs correctly | OK | 37 KB tarball validated with `tar -tzf` |
 | Custom stager build (two-file delivery) | OK | `bundle-stager.sh` → `csvchelper.exe` (17 KB, entropy 4.784) + `payload.dat` (AES-256-CBC) |
 | Runtime execution on Windows (Use case A) | OK | Sliver session established on Windows 10 x64 FLARE-VM; stager passes Defender (Wacatac.B!ml + ZomBytes.B) |

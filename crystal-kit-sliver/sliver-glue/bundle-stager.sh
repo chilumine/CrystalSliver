@@ -3,7 +3,7 @@
 # bundle-stager.sh — build the two-file Crystal Palace stager
 #
 # Outputs two files that must be delivered together:
-#   stager.exe    — small loader (~60 KB), reads payload.dat and executes PICO
+#   stager.exe    — small loader (~17 KB), reads payload.dat and executes PICO
 #   payload.dat   — AES-256-CBC encrypted PICO (opaque binary, no PE patterns)
 #
 # Evasion improvements over run.x64.exe / single-file embedded approach:
